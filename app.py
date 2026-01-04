@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime
 
 # --- הגדרות האתר ---
-st.set_page_config(page_title="ניהול מלאי", page_icon="📦", layout="centered")
+st.set_page_config(page_title="ניהול מלאי - מקט", page_icon="📦", layout="centered")
 
 # --- עיצוב לימין-לשמאל (עברית) ---
 st.markdown("""
@@ -15,6 +15,7 @@ st.markdown("""
     .stSelectbox > label {direction:rtl; text-align:right;}
     .stMarkdown {direction:rtl; text-align:right;}
     div[data-testid="stExpander"] details summary p {direction:rtl; text-align:right;}
+    div[data-testid="stDataFrame"] {direction:rtl; text-align:right;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -27,33 +28,39 @@ def init_connection():
     client = gspread.authorize(creds)
     return client
 
-# --- קריאת נתונים ---
+# --- קריאת נתונים (עודכן לשימוש בקישור ישיר) ---
 def get_data(client):
     try:
-        sheet = client.open("SKU_DB").sheet1
+        # שימוש בקישור שנתת - הכי בטוח
+        sheet_url = "https://docs.google.com/spreadsheets/d/1oq-vcCj1FxqFz0cPIEtHWF_ePofjSkIPXOCRdH8DSv0/edit?usp=sharing"
+        sheet = client.open_by_url(sheet_url).sheet1
+        
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
+        
         # המרת עמודת מק"ט לטקסט כדי למנוע בעיות תצוגה
         if 'sku' in df.columns:
             df['sku'] = df['sku'].astype(str)
-        return df
+        return df, sheet
     except Exception as e:
-        return pd.DataFrame()
+        st.error(f"שגיאת התחברות לקובץ: {e}")
+        return pd.DataFrame(), None
 
 # --- יצירת מק"ט חדש ---
 def generate_sku(df, category):
     # מפה שמגדירה קידומת לכל קטגוריה
-    # אתה יכול לשנות את המספרים כאן לפי איך שאתה רוצה
     cat_map = {
         "כללי": 10,
         "מזון": 20,
         "משקאות": 30,
         "ניקיון": 40,
         "חד פעמי": 50,
-        "חשמל": 60
+        "חשמל": 60,
+        "טואלטיקה": 70
     }
     
     # אם הקטגוריה לא ברשימה, נקבע לה קידומת 99
+    # או שננסה ללמוד מהרשימה הקיימת אם יש כבר מוצרים כאלה
     cat_prefix = cat_map.get(category, 99)
     
     # חישוב המספר הבא
@@ -72,8 +79,10 @@ st.title("📦 ניהול מלאי - אונליין")
 
 try:
     client = init_connection()
-    sheet = client.open("SKU_DB").sheet1
-    df = get_data(client)
+    df, sheet = get_data(client)
+
+    if sheet is None:
+        st.stop() # עצור אם אין חיבור
 
     # --- חלק 1: הוספת מוצר חדש ---
     with st.expander("➕ הוספת מוצר חדש", expanded=True):
@@ -145,5 +154,5 @@ try:
         st.info("הטבלה ריקה כרגע.")
 
 except Exception as e:
-    st.error("לא מצליח להתחבר לגוגל")
-    st.info("בפעם הראשונה, יש להגדיר את המפתח הסודי (Secrets) בהגדרות האתר.")
+    st.error("שגיאה כללית במערכת")
+    st.write(e)
